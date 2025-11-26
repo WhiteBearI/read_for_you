@@ -1,0 +1,2 @@
+npx swa build
+npx swa deploy --env production --resource-group OPE --app-name ReadForYou --output-location dist

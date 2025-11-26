@@ -1,0 +1,2 @@
+az webapp up --name ReadForYou --resource-group OPE --runtime PYTHON:3.11
+az webapp update --name ReadForYou --resource-group OPE --set httpsOnly=true
