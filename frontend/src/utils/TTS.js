@@ -3,7 +3,7 @@
  * 将文本转换为语音音频
  */
 
-import { TTSUrl } from '../constants.js';
+const TTSUrl = import.meta.env.VITE_TTS_URL;
 import { addLanguageParam } from './i18n.js';
 
 /**
@@ -28,8 +28,8 @@ export async function textToSpeech(text, language = 'en-US', timeout = 30000) {
 				text: text,
 				language: language
 			}),
-			credentials: 'include',
-			signal: controller.signal
+			signal: controller.signal,
+			credentials: 'include'
 		});
 
 		clearTimeout(timeoutId);

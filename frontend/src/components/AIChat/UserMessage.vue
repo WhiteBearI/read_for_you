@@ -5,14 +5,16 @@
 			:class="{ 'is-playing': isPlaying }"
 			:style="{ width: bubbleWidth + 'px' }"
 			:aria-label="ariaLabel"
-			tabindex="0"
+			tabindex="3"
+			role="button"
 			@click="handlePlay"
 			@keydown.enter.prevent="handlePlay"
+			@keydown.space.prevent="handlePlay"
 		>
-			<span class="duration">{{ durationSeconds }}s</span>
-			<span class="icon">{{ isPlaying ? '⏸️' : '🔊' }}</span>
+			<span class="duration" aria-hidden="true">{{ durationSeconds }}s</span>
+			<span class="icon" aria-hidden="true">{{ isPlaying ? '⏸️' : '🔊' }}</span>
 		</div>
-		<img src="../../assets/UserIcon.jpg" class="avatar" />
+		<img src="../../assets/UserIcon.jpg" class="avatar" aria-hidden="true" />
 	</div>
 </template>
 

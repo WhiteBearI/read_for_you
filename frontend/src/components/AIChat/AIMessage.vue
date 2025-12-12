@@ -1,17 +1,19 @@
 <template>
 	<div class="chat-row left">
-		<img src="../../assets/AIIcon.jpg" class="avatar" />
+		<img src="../../assets/AIIcon.jpg" class="avatar" aria-hidden="true" />
 		<div
 			class="voice-bubble"
 			:class="{ 'is-playing': isPlaying }"
 			:style="{ width: bubbleWidth + 'px' }"
 			:aria-label="ariaLabel"
-			tabindex="0"
+			tabindex="3"
+			role="button"
 			@click="handlePlay"
 			@keydown.enter.prevent="handlePlay"
+			@keydown.space.prevent="handlePlay"
 		>
-			<span class="icon">{{ isPlaying ? '⏸️' : '🔊' }}</span>
-			<span class="duration">{{ durationSeconds }}s</span>
+			<span class="icon" aria-hidden="true">{{ isPlaying ? '⏸️' : '🔊' }}</span>
+			<span class="duration" aria-hidden="true">{{ durationSeconds }}s</span>
 		</div>
 	</div>
 </template>

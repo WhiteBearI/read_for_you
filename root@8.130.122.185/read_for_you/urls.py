@@ -17,17 +17,13 @@ urlpatterns = [
     path("getResultOfUser", views.getResultOfUser, name="getResultOfUser"),
 ]
 
-# Serve static files (both development and production for SPA)
-dist_root = settings.BASE_DIR / 'read_for_you' / 'static' / 'dist'
-
-# 静态文件路由 - 必须在 catch-all 之前
-urlpatterns += [
-    re_path(r'^(?P<path>assets/.*)$', static_serve, {'document_root': dist_root}),
-    re_path(r'^(?P<path>vite\.svg)$', static_serve, {'document_root': dist_root}),
-]
-
+# Serve static files in development
 if settings.DEBUG:
+    dist_root = settings.BASE_DIR / 'read_for_you' / 'static' / 'dist'
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])
+    urlpatterns += [
+        re_path(r'^(?P<path>(assets/.*|vite\.svg))$', static_serve, {'document_root': dist_root}),
+    ]
 
 # Catch-all route for SPA - must be AFTER static files
 urlpatterns += [

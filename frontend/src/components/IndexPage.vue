@@ -1,64 +1,38 @@
 <template>
 	<div class="index-page">
 		<!-- 顶部导航栏 -->
-		<TopNav>
-			<template #actions>
-				<!-- 上传按钮 -->
-				<button class="upload-btn" @click="showDialog = true">
-					<svg class="upload-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
-					<span>{{ t('uploadPDF') }}</span>
-				</button>
+		<TopNav />
 
-				<!-- 帮助按钮 -->
-				<button class="help-btn" @click="openHelpDialog" :aria-label="t('viewHelp')">
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-						<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-						<circle cx="12" cy="17" r="1" fill="currentColor"/>
-					</svg>
-					<span>{{ t('viewHelp') }}</span>
-				</button>
-			</template>
-		</TopNav>
-
-		<!-- 主内容区 - 图书展示 -->
+		<!-- 主内容区 - 欢迎页面 -->
 		<div class="main-content">
-			<!-- 按分类展示图书 -->
-			<div v-if="!loading" class="categories-container">
-			<div v-for="category in categorizedBooks" :key="category.key" class="category-section">
-				<!-- 分类标题 -->
-				<h2 class="category-title" tabindex="0">
-					<span class="category-icon">{{ category.icon }}</span>
-					{{ category.name }}
-					<span class="category-count">{{ category.books.length }}</span>
-				</h2>					<!-- 该分类下的图书网格 -->
-					<div class="book-gallery">
-						<div v-for="book in category.books" :key="book.coverUrl"
-							class="book-card"
-							:tabindex="0"
-							:aria-label="`Book: ${getBookTitle(book)}`"
-							@click="handleImageClick(book)"
-							@keydown.enter="handleImageClick(book)"
-							@keydown.space.prevent="handleImageClick(book)">
-
-							<div class="book-cover">
-								<img :src="book.coverUrl" :alt="getBookTitle(book)" class="cover-image" />
-							</div>
-
-							<div class="book-info">
-								<h3 class="book-title">{{ getBookTitle(book) }}</h3>
-							</div>
-						</div>
-					</div>
+			<div class="welcome-section">
+				<h1 class="welcome-title" tabindex="0">{{ t('welcomeTitle') }}</h1>
+				
+				<div class="action-buttons">
+					<!-- 上传书籍按钮 -->
+					<button class="action-btn" @click="showDialog = true" tabindex="0">
+						<span class="btn-icon">📤</span>
+						<span class="btn-text">{{ t('uploadPDF') }}</span>
+					</button>
+					
+					<!-- 我的书籍按钮 -->
+					<button class="action-btn" @click="goToMyBooks" tabindex="0">
+						<span class="btn-icon">📖</span>
+						<span class="btn-text">{{ t('myBooks') }}</span>
+					</button>
+					
+					<!-- 在线书城按钮 -->
+					<button class="action-btn" @click="goToLibrary" tabindex="0">
+						<span class="btn-icon">📚</span>
+						<span class="btn-text">{{ t('onlineLibrary') }}</span>
+					</button>
+					
+					<!-- 查看帮助按钮 -->
+					<button class="action-btn" @click="openHelpDialog" tabindex="0">
+						<span class="btn-icon">❓</span>
+						<span class="btn-text">{{ t('viewHelp') }}</span>
+					</button>
 				</div>
-			</div>
-
-			<!-- 加载状态 -->
-			<div v-if="loading" class="loading-container">
-				<div class="loading-spinner"></div>
-				<p>{{ t('loadingBooks') }}</p>
 			</div>
 		</div>
 
@@ -130,13 +104,14 @@
 					<div class="loading-spinner"></div>
 
 					<!-- 文件名/书籍名 -->
-					<div class="processing-file-name">
+					<div class="processing-file-name" tabindex="0">
 						📄 {{ processingFileName }}
 					</div>
 
 					<!-- 加载文本 -->
-					<h3 class="loading-title">{{ loadingMessage }}</h3>
-					<p class="loading-description">{{ isLoadingBook ? t('loadingBookDescription') : t('loadingDescription') }}</p>
+					<h3 class="loading-title" tabindex="0" ref="loadingTitleRef">{{ loadingMessage }}</h3>
+					<p class="loading-description" tabindex="0">{{ isLoadingBook ? t('loadingBookDescription') : t('loadingDescription') }}</p>
+					<p class="loading-hint" tabindex="0">{{ t('checkMyBooksHint') }}</p>
 
 					<!-- 简化的进度指示 -->
 					<div class="loading-dots">
@@ -199,8 +174,8 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
-import { backendUrl, translateUrl } from '../constants.js'
+import { ref, watch, nextTick, onMounted } from 'vue';
+const backendUrl = import.meta.env.VITE_BACKEND_URL
 import { validatePageRange, getPDFPageCount } from '../utils/PDFService.js';
 import indexedDBService from '../utils/IndexedDBService.js';
 import { useTranslation, addLanguageParam } from '../utils/i18n.js';
@@ -208,85 +183,32 @@ import TopNav from './TopNav.vue';
 
 const { t, language } = useTranslation();
 
-// 响应式语言状态（用于触发UI更新，直接使用 i18n 提供的 language）
-const currentLanguage = ref(language);
-
 const showDialog = ref(false);
 const showHelpDialog = ref(false);
 const pageNum = ref('');
 const file = ref(null);
 const dialogTitleRef = ref(null);
 const helpTitleRef = ref(null);
+const loadingTitleRef = ref(null);
 const recognizing = ref(false);
-const loading = ref(false);
 const loadingMessage = ref('');
-const processingFileName = ref(''); // 当前处理的文件名或书籍名
-const isLoadingBook = ref(false); // 区分是加载书籍还是处理用户文档
+const processingFileName = ref('');
+const isLoadingBook = ref(false);
 let abortController = null;
-let bookLoadAbortController = null; // 用于取消书籍加载
 
 // 页码格式验证状态
 const pageNumError = ref('');
 const pageNumValid = ref(false);
 
-// 书籍数据列表（包含封面URL和元数据）
-const bookImages = ref([]);
-
-// 默认分类图标映射（可根据关键词匹配）
-const categoryIcons = {
-	'AI': '🤖',
-	'Artificial Intelligence': '🤖',
-	'Business': '💼',
-	'Finance': '💼',
-	'Development': '🌱',
-	'Growth': '🌱',
-	'Fiction': '📚',
-	'Literature': '📚',
-	'Novel': '📚',
-	'Science': '🔬',
-	'Education': '🔬',
-	'Technology': '💻',
-	'History': '📜',
-	'Philosophy': '🤔',
-	'Art': '🎨',
-	'default': '📖'
-};
-
-// 根据分类名称获取图标
-function getCategoryIcon(categoryEn) {
-	for (const [key, icon] of Object.entries(categoryIcons)) {
-		if (categoryEn.includes(key)) {
-			return icon;
-		}
-	}
-	return categoryIcons.default;
+// 跳转到在线书城
+function goToLibrary() {
+	window.location.hash = '#/library';
 }
 
-// 计算属性：按分类组织书籍
-const categorizedBooks = computed(() => {
-	const language = currentLanguage.value;
-	const categoryMap = new Map();
-
-	// 将书籍按分类分组
-	bookImages.value.forEach(book => {
-		const categoryEn = book.metadata?.category_en || 'General';
-		const categoryZh = book.metadata?.category_zh || '其他';
-
-		if (!categoryMap.has(categoryEn)) {
-			categoryMap.set(categoryEn, {
-				key: categoryEn,
-				name: language === 'zh' ? categoryZh : categoryEn,
-				icon: getCategoryIcon(categoryEn),
-				books: []
-			});
-		}
-
-		categoryMap.get(categoryEn).books.push(book);
-	});
-
-	// 转换为数组并按分类名称排序
-	return Array.from(categoryMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-});
+// 跳转到我的书籍
+function goToMyBooks() {
+	window.location.hash = '#/mybooks';
+}
 
 // 格式化帮助文本（将换行符转换为HTML）
 function formatHelpText(text) {
@@ -315,186 +237,7 @@ function handleHelpDialogKeydown(event) {
 	}
 }
 
-// 获取封面图片和书籍元数据
-async function getCoverImages() {
-	loading.value = true;
-	try {
-		// 并行请求封面URL和元数据
-		const [coversResponse, metadataResponse] = await Promise.all([
-			fetch(`${backendUrl}/getCoverImages`, { credentials: 'include' }),
-			fetch(`${backendUrl}/getBookMetadata`, { credentials: 'include' })
-		]);
-
-		const coversData = await coversResponse.json();
-		const metadataData = await metadataResponse.json();
-
-		if (!coversData.success) {
-			console.error('Failed to get cover images:', coversData);
-			alert('Failed to load book covers');
-			return;
-		}
-
-		if (!metadataData.success) {
-			console.warn('Failed to get book metadata, using covers only');
-			// 降级方案：只有封面，没有元数据
-			bookImages.value = coversData.images.map((coverUrl, index) => ({
-				coverUrl,
-				metadata: null,
-				index
-			}));
-			return;
-		}
-
-		// 提取 prefix 的辅助函数
-		const extractPrefix = (coverUrl) => {
-			let prefix = coverUrl.replace(/\/[^\/]+\.(jpg|jpeg|png|gif).*$/i, '');
-			const containerIndex = prefix.indexOf('.net/bookblobcontainer/');
-			if (containerIndex !== -1) {
-				prefix = prefix.substring(containerIndex + 23);
-			}
-			return prefix;
-		};
-
-		// 匹配封面和元数据
-		const coverUrls = coversData.images;
-		const metadataList = metadataData.data;
-
-		bookImages.value = coverUrls.map((coverUrl, index) => {
-			const prefix = extractPrefix(coverUrl);
-			// 通过 book_prefix 匹配元数据
-			const matchedMetadata = metadataList.find(item =>
-				prefix.includes(item.book_prefix) || item.book_prefix.includes(prefix)
-			);
-
-			return {
-				coverUrl,
-				metadata: matchedMetadata || null,
-				index
-			};
-		});
-
-		console.log(`Loaded ${bookImages.value.length} books with metadata`);
-	} catch (error) {
-		console.error('Error fetching book data:', error);
-		alert('Error loading books: ' + error.message);
-	} finally {
-		loading.value = false;
-	}
-}
-
-// 处理图片点击事件
-async function handleImageClick(book) {
-	// 如果有元数据，直接使用 book_prefix；否则从 URL 提取
-	let prefix;
-	if (book.metadata && book.metadata.book_prefix) {
-		prefix = book.metadata.book_prefix;
-	} else {
-		// 降级方案：从封面 URL 提取 prefix
-		const imageUrl = book.coverUrl;
-		prefix = imageUrl.replace(/\/[^\/]+\.(jpg|jpeg|png|gif).*$/i, '');
-		const containerIndex = prefix.indexOf('.net/bookblobcontainer/');
-		if (containerIndex !== -1) {
-			prefix = prefix.substring(containerIndex + 23);
-		}
-	}
-
-	console.log('Book clicked, prefix:', prefix);
-
-	loadingMessage.value = t('loading');
-	processingFileName.value = getBookTitle(book); // 设置书籍名
-	isLoadingBook.value = true; // 加载书籍
-	recognizing.value = true;
-	bookLoadAbortController = new AbortController();
-
-	try {
-		// 并行获取 PDF 和 JSON 文件
-		const [pdfResponse, jsonResponse] = await Promise.all([
-			fetch(`${backendUrl}/getStoragedData?prefix=${encodeURIComponent(prefix)}&type=pdf`, {
-				signal: bookLoadAbortController.signal,
-				credentials: 'include'
-			}),
-			fetch(`${backendUrl}/getStoragedData?prefix=${encodeURIComponent(prefix)}&type=json`, {
-				signal: bookLoadAbortController.signal,
-				credentials: 'include'
-			})
-		]);
-
-		// 检查是否已经取消（用户点击了取消按钮）
-		if (!recognizing.value) {
-			console.log('Book loading cancelled by user, aborting navigation');
-			return;
-		}
-
-		if (!pdfResponse.ok || !jsonResponse.ok) {
-			throw new Error('Failed to fetch PDF or JSON data');
-		}
-
-		// 获取文件数据
-		// PDF 返回: { type: 'pdf', data: 'data:application/pdf;base64,...' }
-		const pdfData = await pdfResponse.json();
-		const pdfBlob = base64ToBlob(pdfData.data, 'application/pdf');
- 
-		// JSON 返回: { type: 'json', data: {...} }
-		const jsonData = await jsonResponse.json();
-		const analysisResult = jsonData.data;
-
-		// 再次检查是否已经取消
-		if (!recognizing.value) {
-			console.log('Book loading cancelled by user, aborting navigation');
-			return;
-		}
-
-		// 使用 IndexedDB 存储数据
-		await indexedDBService.setItems({
-			analysisResult: analysisResult,        // 原始数据
-			PDFBlob: pdfBlob,                      // PDF Blob 对象
-			bookTitle: getBookTitle(book),         // 书籍名称
-			pdfFileName: book.metadata?.pdf_file || 'Unknown'  // PDF文件名
-		});
-
-		console.log('Data stored successfully, navigating to reading page');
-		window.location.hash = '#/reading';
-
-	} catch (error) {
-		// 如果是取消操作，不显示错误
-		if (error.name === 'AbortError') {
-			console.log('Book loading aborted by user');
-		} else {
-			console.error('Error handling image click:', error);
-			alert('Failed to load book data: ' + error.message);
-		}
-	} finally {
-		recognizing.value = false;
-	}
-}
-
-// 获取书名（从元数据中获取统一的 title 字段）
-function getBookTitle(book) {
-	// 如果有元数据，使用元数据中的 title
-	if (book.metadata) {
-		return book.metadata.title || `Book ${book.index + 1}`;
-	}
-
-	// 降级方案：使用占位符
-	const placeholderTitles = [
-		'The Great Adventure',
-		'Mystery of the Ocean',
-		'Journey Through Time',
-		'Ancient Wisdom',
-		'Modern Technology',
-		'Art and Culture',
-		'Science Frontiers',
-		'Historical Tales'
-	];
-	return placeholderTitles[book.index % placeholderTitles.length] || `Book ${book.index + 1}`;
-}
-
-/**
- * 将 base64 字符串转换为 Blob
- * @param {string} base64 - base64 编码的字符串（可以带或不带 data URI 前缀）
- * @param {string} contentType - MIME 类型
- * @returns {Blob} - 转换后的 Blob 对象
- */
+// base64 转 Blob
 function base64ToBlob(base64, contentType = '') {
 	// 移除 data URI 前缀（如果存在）
 	let base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
@@ -607,6 +350,13 @@ async function startRecognize() {
 	recognizing.value = true;
 	abortController = new AbortController();
 
+	// 浮窗打开后将焦点移到提示语上
+	nextTick(() => {
+		if (loadingTitleRef.value) {
+			loadingTitleRef.value.focus();
+		}
+	});
+
 	try {
 		const recognitionUrl = addLanguageParam(backendUrl + '/recognition');
 		const res = await fetch(recognitionUrl, {
@@ -619,7 +369,6 @@ async function startRecognize() {
 
 		// 检查是否已经取消（用户点击了取消按钮）
 		if (!recognizing.value) {
-			console.log('Recognition cancelled by user, aborting navigation');
 			return;
 		}
 
@@ -638,7 +387,7 @@ async function startRecognize() {
 
 			// IndexedDB 存储
 			await indexedDBService.setItems({
-				analysisResult: JSON.parse(result.result),            // JSON 对象：分析结果
+				analysisResult: result.result,            // JSON 对象：分析结果
 				PDFBlob: pdfBlob,                         // Blob：PDF 文件
 				bookTitle: bookTitleValue,                // 字符串：书籍名称
 				pdfFileName: fileName                     // 字符串：PDF 文件名
@@ -661,12 +410,8 @@ function cancelRecognize() {
 	if (abortController) {
 		abortController.abort();
 	}
-	// 取消Book Center加载的请求
-	if (bookLoadAbortController) {
-		bookLoadAbortController.abort();
-	}
 	recognizing.value = false;
-	console.log('Recognition/loading cancelled by user');
+	console.log('Recognition cancelled by user');
 }
 
 watch(showDialog, (val) => {
@@ -685,22 +430,9 @@ watch(showDialog, (val) => {
 	}
 });
 
-// 组件挂载时获取封面图片
+// 组件挂载
 onMounted(() => {
-	getCoverImages();
-
-	// 监听语言切换事件
-	const handleLanguageChange = (event) => {
-		console.log('Language changed, updating book titles and categories');
-		currentLanguage.value = event.detail.newLanguage;
-	};
-
-	window.addEventListener('languageChanged', handleLanguageChange);
-
-	// 清理监听器
-	onUnmounted(() => {
-		window.removeEventListener('languageChanged', handleLanguageChange);
-	});
+	// 可以在这里添加初始化逻辑
 });
 </script>
 
@@ -720,215 +452,89 @@ onMounted(() => {
 	position: relative;
 }
 
-/* ========== 上传 PDF 按钮 ========== */
-.upload-btn {
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	color: #fff;
-	border: none;
-	border-radius: 10px;
-	padding: 10px 20px;
-	font-size: 14px;
-	font-weight: 600;
-	cursor: pointer;
-	transition: all 0.3s ease;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
-	white-space: nowrap;
-}
-
-.upload-btn:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-}
-
-.upload-btn:active {
-	transform: translateY(0);
-	box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
-}
-
-.upload-icon {
-	width: 18px;
-	height: 18px;
-	flex-shrink: 0;
-}
-
-/* 帮助按钮 */
-.help-btn {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 20px;
-	font-size: 14px;
-	font-weight: 600;
-	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-	color: white;
-	border: none;
-	border-radius: 10px;
-	cursor: pointer;
-	box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3);
-	transition: all 0.3s ease;
-	white-space: nowrap;
-}
-
-.help-btn:hover {
-	transform: translateY(-2px);
-	box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-}
-
-.help-btn:active {
-	transform: translateY(0);
-}
-
-.help-btn:focus {
-	outline: 2px solid #667eea;
-	outline-offset: 2px;
-}
-
-.help-btn svg {
-	flex-shrink: 0;
-}
-
 /* ========== 主内容区 ========== */
 .main-content {
 	width: 100%;
 	max-width: 1600px;
-	margin: 90px auto 0 auto; /* 为固定导航栏留出空间 */
+	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-}
-
-/* ========== 分类容器 ========== */
-.categories-container {
-	display: flex;
-	flex-direction: column;
-	gap: 48px;
-	padding: 0 8px;
-}
-
-.category-section {
-	display: flex;
-	flex-direction: column;
-	gap: 20px;
-}
-
-/* 分类标题 */
-.category-title {
-	font-size: 1.75rem;
-	font-weight: 700;
-	color: #2c3e50;
-	margin: 0;
-	padding: 0 0 12px 0;
-	border-bottom: 3px solid rgba(102, 126, 234, 0.2);
-	display: flex;
-	align-items: center;
-	gap: 12px;
-}
-
-.category-icon {
-	font-size: 2rem;
-	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	min-height: calc(100vh - 48px); /* 减去页面padding */
 }
 
-.category-count {
-	font-size: 1rem;
-	font-weight: 600;
-	color: #667eea;
-	background: rgba(102, 126, 234, 0.1);
-	padding: 4px 12px;
-	border-radius: 20px;
-	margin-left: auto;
+/* ========== 欢迎页面 ========== */
+.welcome-section {
+	text-align: center;
+	padding: 20px 20px;
+	max-width: 900px;
+	margin-top: -40px; /* 向上偏移使其更居中 */
 }
 
-/* ========== 图书网格 ========== */
-.book-gallery {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-	gap: 24px;
-	padding: 0 8px;
+.welcome-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	color: #2c3e50;
+	margin: 0 0 40px 0;
 }
 
-.book-card {
-	background: #fff;
-	border-radius: 12px;
-	overflow: hidden;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-	cursor: pointer;
+.welcome-description {
+	font-size: 1.2rem;
+	color: #5a6c7d;
+	margin: 0 0 48px 0;
+	line-height: 1.6;
+}
+
+/* ========== 四个操作按钮 ========== */
+.action-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 20px;
+	width: 100%;
+}
+
+.action-btn {
 	display: flex;
 	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 32px 40px;
+	background: #fff;
+	border: 2px solid transparent;
+	border-radius: 20px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+	cursor: pointer;
+	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+	min-width: 160px;
 }
 
-.book-card:hover {
+.action-btn:hover {
 	transform: translateY(-4px);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+	border-color: rgba(102, 126, 234, 0.3);
 }
 
-.book-card:active {
+.action-btn:focus {
+	outline: none;
+	border-color: #667eea;
+	box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
+}
+
+.action-btn:active {
 	transform: translateY(-2px);
 }
 
-.book-card:focus {
-	outline: 3px solid #667eea;
-	outline-offset: 2px;
+.btn-icon {
+	font-size: 3rem;
 }
 
-.book-cover {
-	width: 100%;
-	aspect-ratio: 2 / 3; /* 更紧凑的比例 */
-	overflow: hidden;
-	background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
-	position: relative;
-}
-
-.cover-image {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-	display: block;
-	transition: transform 0.3s ease;
-}
-
-.book-card:hover .cover-image {
-	transform: scale(1.05);
-}
-
-.book-info {
-	padding: 14px;
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	background: #fff;
-	flex-grow: 1;
-}
-
-.book-title {
-	font-size: 0.95rem;
+.btn-text {
+	font-size: 1.1rem;
 	font-weight: 600;
 	color: #2c3e50;
-	margin: 0;
-	line-height: 1.35;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	min-height: 2.7em;
-}
-
-.book-category {
-	font-size: 0.8rem;
-	color: #667eea;
-	font-weight: 500;
-	padding: 3px 10px;
-	background: rgba(102, 126, 234, 0.08);
-	border-radius: 4px;
-	display: inline-block;
-	align-self: flex-start;
+	white-space: nowrap;
 }
 
 /* ========== 加载状态 ========== */
@@ -1313,9 +919,18 @@ onMounted(() => {
 .loading-description {
 	font-size: 0.9rem;
 	color: #6b7280;
+	margin: 0 0 12px 0;
+	text-align: center;
+	line-height: 1.5;
+}
+
+.loading-hint {
+	font-size: 0.85rem;
+	color: #9ca3af;
 	margin: 0 0 24px 0;
 	text-align: center;
 	line-height: 1.5;
+	font-style: italic;
 }
 
 /* 进度指示点 */
@@ -1385,31 +1000,17 @@ onMounted(() => {
 
 /* ========== 响应式布局 ========== */
 @media (max-width: 1024px) {
-	.upload-btn {
-		padding: 9px 18px;
-		font-size: 13px;
+	.action-btn {
+		padding: 20px 24px;
+		min-width: 120px;
 	}
 
-	.upload-icon {
-		width: 16px;
-		height: 16px;
+	.btn-icon {
+		font-size: 2rem;
 	}
 
-	.categories-container {
-		gap: 40px;
-	}
-
-	.category-title {
-		font-size: 1.5rem;
-	}
-
-	.category-icon {
-		font-size: 1.75rem;
-	}
-
-	.book-gallery {
-		grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-		gap: 20px;
+	.btn-text {
+		font-size: 0.9rem;
 	}
 }
 
@@ -1531,51 +1132,34 @@ onMounted(() => {
 
 /* 响应式布局 */
 @media (max-width: 768px) {
-	.upload-btn,
-	.help-btn {
-		padding: 8px 16px;
-		font-size: 13px;
-	}
-
 	.main-content {
 		margin-top: 80px;
 	}
 
-	.categories-container {
-		gap: 32px;
+	.welcome-title {
+		font-size: 2rem;
 	}
 
-	.category-title {
-		font-size: 1.3rem;
-		gap: 8px;
+	.welcome-description {
+		font-size: 1rem;
+		margin-bottom: 36px;
 	}
 
-	.category-icon {
-		font-size: 1.5rem;
-	}
-
-	.category-count {
-		font-size: 0.85rem;
-		padding: 3px 10px;
-	}
-
-	.book-gallery {
-		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+	.action-buttons {
 		gap: 16px;
 	}
 
-	.book-info {
-		padding: 12px;
+	.action-btn {
+		padding: 18px 20px;
+		min-width: 100px;
 	}
 
-	.book-title {
-		font-size: 0.9rem;
-		min-height: 2.5em;
+	.btn-icon {
+		font-size: 1.8rem;
 	}
 
-	.book-category {
-		font-size: 0.75rem;
-		padding: 2px 8px;
+	.btn-text {
+		font-size: 0.85rem;
 	}
 
 	/* 移动端帮助对话框 */
@@ -1612,67 +1196,41 @@ onMounted(() => {
 }
 
 @media (max-width: 480px) {
-	.upload-btn,
-	.help-btn {
-		width: 100%;
-		justify-content: center;
-		padding: 11px 20px;
-		font-size: 14px;
-	}
-
-	.upload-icon {
-		width: 18px;
-		height: 18px;
-	}
-
 	.main-content {
-		margin-top: 140px;
+		margin-top: 100px;
+		min-height: calc(100vh - 120px);
 	}
 
-	.categories-container {
-		gap: 28px;
+	.welcome-icon {
+		font-size: 4rem;
+		margin-bottom: 16px;
 	}
 
-	.category-title {
-		font-size: 1.15rem;
-		gap: 6px;
-		padding-bottom: 8px;
-		border-bottom-width: 2px;
+	.welcome-title {
+		font-size: 1.6rem;
 	}
 
-	.category-icon {
-		font-size: 1.3rem;
+	.welcome-description {
+		font-size: 0.95rem;
+		margin-bottom: 32px;
 	}
 
-	.category-count {
-		font-size: 0.75rem;
-		padding: 2px 8px;
-	}
-
-	.book-gallery {
-		grid-template-columns: repeat(2, 1fr);
+	.action-buttons {
 		gap: 12px;
 	}
 
-	.book-card {
-		border-radius: 10px;
+	.action-btn {
+		padding: 16px 16px;
+		min-width: 80px;
+		border-radius: 12px;
 	}
 
-	.book-info {
-		padding: 10px;
-		gap: 5px;
+	.btn-icon {
+		font-size: 1.5rem;
 	}
 
-	.book-title {
-		font-size: 0.85rem;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		min-height: 2.4em;
-	}
-
-	.book-category {
-		font-size: 0.7rem;
-		padding: 2px 7px;
+	.btn-text {
+		font-size: 0.75rem;
 	}
 
 	/* 加载对话框响应式 */
@@ -1694,6 +1252,10 @@ onMounted(() => {
 		font-size: 0.85rem;
 	}
 
+	.loading-hint {
+		font-size: 0.8rem;
+	}
+
 	/* 移动端对话框优化 */
 	.dialog-box {
 		padding: 20px 16px;
@@ -1705,17 +1267,6 @@ onMounted(() => {
 	.dialog-title {
 		font-size: 1.2rem;
 		margin-bottom: 16px;
-	}
-
-	.help-btn {
-		font-size: 13px;
-		padding: 9px 16px;
-		gap: 6px;
-	}
-
-	.help-btn svg {
-		width: 16px;
-		height: 16px;
 	}
 
 	/* 移动端帮助对话框 */
@@ -1735,18 +1286,26 @@ onMounted(() => {
 
 /* 超小屏幕优化 */
 @media (max-width: 360px) {
-	.book-gallery {
+	.action-buttons {
 		gap: 8px;
+	}
+
+	.action-btn {
+		padding: 12px 10px;
+		min-width: 70px;
+	}
+
+	.btn-icon {
+		font-size: 1.3rem;
+	}
+
+	.btn-text {
+		font-size: 0.7rem;
 	}
 
 	.dialog-box {
 		margin: 8px;
 		padding: 16px 12px;
-	}
-
-	.help-btn {
-		font-size: 12px;
-		padding: 6px 8px;
 	}
 
 	.help-dialog-box {

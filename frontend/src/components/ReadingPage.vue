@@ -245,7 +245,7 @@ import { useTranslation } from '../utils/i18n.js';
 import TopNav from './TopNav.vue';
 import * as pdfjsLib from 'pdfjs-dist/build/pdf';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { backendUrl } from '../constants.js';
+const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
@@ -1150,13 +1150,17 @@ function stopReading() {
 // 保存当前焦点上下文（在跳转到 AIChat 前调用）
 async function saveFocusContext() {
 	const focusedElement = document.activeElement;
+	console.log('[saveFocusContext] Current focused element:', focusedElement);
+	console.log('[saveFocusContext] Element classes:', focusedElement?.className);
 
 	// 查找所有可聚焦的元素（图片、段落、表格等）
 	const focusableElements = document.querySelectorAll(
 		'.figure-img, .paragraph, .result-table, .page-controls span, .page-controls button, .jump-input'
 	);
+	console.log('[saveFocusContext] Total focusable elements:', focusableElements.length);
 
 	const focusIndex = Array.from(focusableElements).indexOf(focusedElement);
+	console.log('[saveFocusContext] Focus index:', focusIndex);
 
 	if (focusIndex !== -1) {
 		// 保存焦点信息到 IndexedDB
@@ -1167,8 +1171,31 @@ async function saveFocusContext() {
 				readingpage_current_page: currentPage.value,
 				readingpage_focus_timestamp: Date.now()
 			});
+			console.log('[saveFocusContext] ✓ Saved successfully');
 		} catch (err) {
 			console.warn('Failed to save focus context:', err);
+		}
+	} else {
+		console.log('[saveFocusContext] ⚠ Focused element not in focusable list, saving anyway with closest match');
+		// 即使找不到精确匹配，也尝试保存当前滚动位置和页码
+		// 查找最近的可聚焦祖先元素
+		let closestFocusable = focusedElement?.closest('.figure-img, .paragraph, .result-table');
+		if (closestFocusable) {
+			const closestIndex = Array.from(focusableElements).indexOf(closestFocusable);
+			console.log('[saveFocusContext] Found closest focusable:', closestFocusable, 'index:', closestIndex);
+			if (closestIndex !== -1) {
+				try {
+					await indexedDBService.setItems({
+						readingpage_focus_index: closestIndex,
+						readingpage_scroll_y: window.scrollY,
+						readingpage_current_page: currentPage.value,
+						readingpage_focus_timestamp: Date.now()
+					});
+					console.log('[saveFocusContext] ✓ Saved with closest match');
+				} catch (err) {
+					console.warn('Failed to save focus context:', err);
+				}
+			}
 		}
 	}
 }
@@ -1183,8 +1210,11 @@ async function restoreFocusContext() {
 			indexedDBService.getItem('readingpage_focus_timestamp')
 		]);
 
+		console.log('[restoreFocusContext] Saved data:', { focusIndex, scrollY, savedPage, timestamp });
+
 		// 检查是否有保存的焦点信息
 		if (focusIndex === undefined || focusIndex === null) {
+			console.log('[restoreFocusContext] No saved focus index, skipping');
 			return;
 		}
 
@@ -1193,26 +1223,31 @@ async function restoreFocusContext() {
 		const currentTime = Date.now();
 		const timeDiff = currentTime - (timestamp || 0);
 		if (timeDiff > 300000) { // 5分钟 = 300000毫秒
+			console.log('[restoreFocusContext] Data expired, clearing');
 			await clearFocusContext();
 			return;
 		}
 
 		// 如果保存的页码与当前页码不同，先跳转到保存的页码
 		if (savedPage && savedPage !== currentPage.value) {
+			console.log('[restoreFocusContext] Changing page from', currentPage.value, 'to', savedPage);
 			currentPage.value = savedPage;
 		}
 
-		// 等待 DOM 更新后恢复焦点
+		// 等待 DOM 更新后恢复焦点（增加延迟确保 PDF 内容渲染完成）
 		nextTick(() => {
 			setTimeout(() => {
 				const focusableElements = document.querySelectorAll(
 					'.figure-img, .paragraph, .result-table, .page-controls span, .page-controls button, .jump-input'
 				);
 
+				console.log('[restoreFocusContext] Found', focusableElements.length, 'focusable elements, target index:', focusIndex);
+
 				if (focusIndex >= 0 && focusIndex < focusableElements.length) {
 					const targetElement = focusableElements[focusIndex];
 
 					if (targetElement) {
+						console.log('[restoreFocusContext] Focusing element:', targetElement);
 						targetElement.focus();
 
 						// 恢复滚动位置（平滑滚动）
@@ -1229,11 +1264,13 @@ async function restoreFocusContext() {
 							targetElement.classList.remove('focus-restored');
 						}, 2000);
 					}
+				} else {
+					console.log('[restoreFocusContext] Target index out of range');
 				}
 
 				// 清除保存的焦点信息
 				clearFocusContext();
-			}, 100); // 给一点延迟确保 DOM 完全渲染
+			}, 500); // 增加延迟确保 DOM 完全渲染（包括分析结果内容）
 		});
 	} catch (err) {
 		console.warn('Failed to restore focus context:', err);
@@ -1664,9 +1701,18 @@ async function onFigureKeydown(e, imageUrl, aiDescription) {
 		// 先保存焦点上下文
 		await saveFocusContext();
 
-		// 保存选中的图片 URL 和 AI 描述到 IndexedDB
+		// 先下载图片并转为 base64
+		let imageBase64 = '';
 		try {
-			const dataToSave = { selectedImageUrl: imageUrl };
+			imageBase64 = await getImageFromBlob(imageUrl);
+			console.log('📷 Image downloaded and converted to base64');
+		} catch (err) {
+			console.warn('[ReadingPage] Failed to download image:', err);
+		}
+
+		// 保存图片 base64 和 AI 描述到 IndexedDB
+		try {
+			const dataToSave = { selectedImageBase64: imageBase64 };
 			if (aiDescription) {
 				dataToSave.selectedImageDescription = aiDescription;
 				console.log('📝 Saved AI description:', aiDescription);
@@ -1677,6 +1723,8 @@ async function onFigureKeydown(e, imageUrl, aiDescription) {
 			if (!aiDescription) {
 				await indexedDBService.removeItem('selectedImageDescription');
 			}
+			// 移除旧的 URL 字段（如果存在）
+			await indexedDBService.removeItem('selectedImageUrl');
 		} catch (err) {
 			console.warn('[ReadingPage] Failed to persist image data to IndexedDB:', err);
 		}
@@ -1694,9 +1742,18 @@ async function onImgKeydown(e, imageUrl, aiDescription) {
 		// 先保存焦点上下文
 		await saveFocusContext();
 
-		// 保存选中的图片 URL 和 AI 描述到 IndexedDB
+		// 先下载图片并转为 base64
+		let imageBase64 = '';
 		try {
-			const dataToSave = { selectedImageUrl: imageUrl };
+			imageBase64 = await getImageFromBlob(imageUrl);
+			console.log('📷 Image downloaded and converted to base64');
+		} catch (err) {
+			console.warn('[ReadingPage] Failed to download image:', err);
+		}
+
+		// 保存图片 base64 和 AI 描述到 IndexedDB
+		try {
+			const dataToSave = { selectedImageBase64: imageBase64 };
 			if (aiDescription) {
 				dataToSave.selectedImageDescription = aiDescription;
 				console.log('📝 Saved AI description:', aiDescription);
@@ -1707,6 +1764,8 @@ async function onImgKeydown(e, imageUrl, aiDescription) {
 			if (!aiDescription) {
 				await indexedDBService.removeItem('selectedImageDescription');
 			}
+			// 移除旧的 URL 字段（如果存在）
+			await indexedDBService.removeItem('selectedImageUrl');
 		} catch (err) {
 			console.warn('[ReadingPage] Failed to persist image data to IndexedDB:', err);
 		}

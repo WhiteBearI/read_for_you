@@ -2,3 +2,5 @@ commit_message.txt
 deploy_todolist.txt
 backend/.env
 frontend/.env
+__pycache__/
+**/__pycache__/

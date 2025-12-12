@@ -8,17 +8,24 @@
 		</TopNav>
 
 		<div class="content">
+			<!-- 返回阅读页面按钮 - 左上角 -->
+			<button ref="backButtonRef" class="back-btn-corner" tabindex="2" @click="goBackToReading" :aria-label="t('backToReadingPage')">
+				<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+					<path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+			</button>
+
 			<!-- 固定的图片区域 -->
-			<div class="target-image">
-				<img :src="imageUrl" alt="target image" tabindex="0" />
+			<div class="target-image" aria-hidden="true">
+				<img :src="targetImage" alt="" tabindex="-1" />
 			</div>
 
 			<!-- 可滚动的聊天区域 -->
 			<div class="chat-area" ref="chatAreaRef">
 				<!-- AI 描述区域 -->
-				<div v-if="imageDescription" class="ai-description-box">
+				<div v-if="imageDescription" class="ai-description-box" aria-hidden="true">
 					<div class="ai-badge">🤖 {{ t('aiDescription') }}</div>
-					<p class="ai-description-text">{{ imageDescription }}</p>
+					<p class="ai-description-text" tabindex="-1">{{ imageDescription }}</p>
 				</div>
 				<div v-for="(message, index) in messages" :key="index">
 					<UserMessage 
@@ -29,6 +36,7 @@
 						@play="handlePlayAudio(index)" />
 					<AIMessage 
 						v-else 
+						:ref="el => setAIMessageRef(el, index)"
 						:seq="index" 
 						:duration="message.duration"
 						:isPlaying="currentPlayingIndex === index"
@@ -41,7 +49,9 @@
 					⚠️ {{ connectionError }}
 				</div>
 				<button
+					ref="talkButtonRef"
 					class="talk-button"
+					tabindex="1"
 					:class="{ 'is-recording': isRecording }"
 					:disabled="!isWebSocketReady || connectionError"
 					@mousedown="startRecording"
@@ -57,7 +67,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { aiChatUrl } from '../../constants.js';
+const aiChatUrl = import.meta.env.VITE_AI_CHAT_URL;
 import UserMessage from './UserMessage.vue';
 import AIMessage from './AIMessage.vue';
 import { useTranslation, addLanguageParam } from '../../utils/i18n.js';
@@ -67,11 +77,13 @@ import indexedDBService from '../../utils/IndexedDBService.js';
 const { t } = useTranslation();
 
 const messages = ref([])
-const imageUrl = ref('')
 const imageDescription = ref('') // AI生成的图片描述
 const useChunkedAudioSend = true // 切换 true 使用分片发送；false 使用原先整段 base64 一次性发送
 const targetImage = ref(null)
 const chatAreaRef = ref(null)
+const talkButtonRef = ref(null)
+const backButtonRef = ref(null)
+const aiMessageRefs = ref({})
 const isRecording = ref(false)
 const currentPlayingIndex = ref(null) // 当前正在播放的消息索引
 const isWebSocketReady = ref(false) // WebSocket connection status
@@ -131,44 +143,29 @@ function connectWS() {
 }
 
 async function parseHashImage() {
-	let storedUrl = null
+	let storedBase64 = null
 	let storedDescription = null
 	try {
-		// 从 IndexedDB 读取图片数据
-		storedUrl = await indexedDBService.getItem('selectedImageUrl')
+		// 从 IndexedDB 读取图片 base64 数据（已由 ReadingPage 预先下载）
+		storedBase64 = await indexedDBService.getItem('selectedImageBase64')
 		storedDescription = await indexedDBService.getItem('selectedImageDescription')
 	} catch (err) {
-		console.warn('Failed to read imageUrl or description from IndexedDB:', err)
+		console.warn('Failed to read image data from IndexedDB:', err)
 	}
-	if (storedUrl) {
-		imageUrl.value = storedUrl
+	if (storedBase64) {
+		targetImage.value = storedBase64
+		console.log('📷 Loaded image base64 from IndexedDB')
 		if (storedDescription) {
 			imageDescription.value = storedDescription
 			console.log('📝 Loaded AI description:', storedDescription)
 		}
 		return
 	}
-
 }
 
-async function downloadImage() {
-	if (!imageUrl.value) {
-		targetImage.value = null;
-		return;
-	}
-	try {
-		const response = await fetch(imageUrl.value, { credentials: 'include' });
-		if (!response.ok) throw new Error('图片下载失败');
-		const blob = await response.blob();
-		const reader = new FileReader();
-		reader.onloadend = () => {
-			targetImage.value = reader.result; // base64字符串
-		};
-		reader.readAsDataURL(blob);
-	} catch (err) {
-		console.error('图片下载出错:', err);
-		targetImage.value = null;
-	}
+// 返回阅读页面
+function goBackToReading() {
+	window.location.hash = '#/reading';
 }
 
 async function initRecorder() {
@@ -192,6 +189,10 @@ async function initRecorder() {
 function startRecording(event) {
 	// 处理空格键或鼠标按下
 	if (event.type === 'mousedown' || (event.type === 'keydown' && event.key === ' ' && !event.repeat)) {
+		// 如果正在播放音频，先停止播放
+		if (currentPlayingIndex.value !== null) {
+			stopCurrentAudio();
+		}
 		isRecording.value = true;
 		mediaRecorder.start();
 		startTime = performance.now();
@@ -208,6 +209,7 @@ function stopRecording(event) {
 }
 
 function addMessage(role, duration, data) {
+	const newIndex = messages.value.length;
 	messages.value.push({
 		"role": role,
 		"duration": duration,
@@ -215,6 +217,31 @@ function addMessage(role, duration, data) {
 	});
 	// 添加消息后自动滚动到底部
 	scrollToBottom();
+	// 如果是AI消息，自动播放
+	if (role === 'assistant') {
+		nextTick(() => {
+			handlePlayAudio(newIndex);
+		});
+	}
+}
+
+// 设置AI消息的ref
+function setAIMessageRef(el, index) {
+	if (el) {
+		aiMessageRefs.value[index] = el;
+	}
+}
+
+// 聚焦到最新的AI消息
+function focusLatestAIMessage(index) {
+	const aiMessageComponent = aiMessageRefs.value[index];
+	if (aiMessageComponent && aiMessageComponent.$el) {
+		const bubble = aiMessageComponent.$el.querySelector('.voice-bubble');
+		if (bubble) {
+			bubble.tabIndex = 3;
+			bubble.focus();
+		}
+	}
 }
 
 function scrollToBottom() {
@@ -677,34 +704,28 @@ async function sendImageMessage(requestId) {
 	console.log('│ [sendImageMessage] START                        │');
 	console.log('└─────────────────────────────────────────────────┘');
 	console.log('[sendImageMessage] Request ID:', requestId);
-	console.log('[sendImageMessage] Image URL:', imageUrl.value);
 	
-	if (!imageUrl.value) {
-		console.warn('[sendImageMessage] ⚠ No image URL available');
+	if (!targetImage.value) {
+		console.warn('[sendImageMessage] ⚠ No image data available');
 		return;
 	}
 
 	try {
-		// 1. 下载图片
-		console.log('[sendImageMessage] → Fetching image...');
-		const response = await fetch(imageUrl.value, { credentials: 'include' });
-		if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
-		const blob = await response.blob();
-		const arrayBuffer = await blob.arrayBuffer();
-		const uint8Array = new Uint8Array(arrayBuffer);
-		console.log('[sendImageMessage] ✓ Image downloaded:', uint8Array.length, 'bytes');
+		// 1. 从 targetImage 提取 base64 数据 (已经是 data:image/xxx;base64,... 格式)
+		const dataUrlMatch = targetImage.value.match(/^data:image\/(\w+);base64,(.+)$/);
+		if (!dataUrlMatch) {
+			throw new Error('Invalid image data format');
+		}
+		
+		const fileFormat = dataUrlMatch[1].toLowerCase();
+		const imageBase64 = dataUrlMatch[2];
+		
+		// 2. 计算文件大小（base64 解码后的字节数）
+		const fileSize = Math.floor(imageBase64.length * 3 / 4);
+		console.log('[sendImageMessage] ✓ Image data extracted:', fileSize, 'bytes');
 
-		// 2. 转换成 base64
-		console.log('[sendImageMessage] → Converting to base64...');
-		const imageBase64 = uint8ToBase64(uint8Array);
-		console.log('[sendImageMessage] ✓ Base64 conversion complete');
-
-		// 3. 获取文件信息
-		const urlParts = imageUrl.value.split('/');
-		const filename = urlParts[urlParts.length - 1] || 'image';
-		const extMatch = filename.match(/\.(\w+)$/);
-		const fileFormat = extMatch ? extMatch[1].toLowerCase() : 'png';
-		const fileSize = uint8Array.length;
+		// 3. 生成文件名
+		const filename = `image.${fileFormat === 'jpeg' ? 'jpg' : fileFormat}`;
 
 		// 4. MIME 类型映射
 		const mimeTypeMap = {
@@ -1037,7 +1058,6 @@ async function handleResponse(audioBlob) {
 onMounted(async () => {
 	audioContext = new (window.AudioContext || window.webkitAudioContext)();
 	await parseHashImage();
-	downloadImage();
 
 	// Connect to WebSocket and wait for connection to be ready
 	try {
@@ -1049,7 +1069,13 @@ onMounted(async () => {
 	}
 
 	initRecorder();
+
+	// Auto-focus on talk button for accessibility (first in tab order)
+	nextTick(() => {
+		talkButtonRef.value?.focus();
+	});
 })
+
 onUnmounted(() => {
 	stopCurrentAudio(); 
 	ws?.close(); 
@@ -1080,7 +1106,38 @@ onUnmounted(() => {
 	color: #5f6368;
 }
 
+/* 返回按钮 - 左上角箭头 */
+.back-btn-corner {
+	position: absolute;
+	top: 10px;
+	left: 10px;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	padding: 0;
+	background: rgba(255, 255, 255, 0.15);
+	color: white;
+	border: none;
+	border-radius: 50%;
+	cursor: pointer;
+	transition: all 0.3s ease;
+}
+
+.back-btn-corner:hover {
+	background: rgba(255, 255, 255, 0.25);
+	transform: scale(1.1);
+}
+
+.back-btn-corner:focus {
+	outline: 2px solid white;
+	outline-offset: 2px;
+}
+
 .content {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	width: 50%;

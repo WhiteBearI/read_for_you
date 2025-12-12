@@ -1,16 +1,14 @@
 <template>
 	<div class="top-nav">
 		<!-- 左侧：Microsoft Logo + 品牌标识 -->
-		<div class="brand-section">
+		<div class="brand-section" @click="goToHome" @keydown.enter="goToHome" tabindex="0" role="button" :aria-label="'Read for You, ' + t('clickToReturnHome')">
 			<img
 				src="../assets/Microsoft.png"
 				alt="Microsoft"
 				class="microsoft-logo"
-				tabindex="0"
-				aria-label="Microsoft"
 				role="img"
 			/>
-			<h1 class="brand-title" tabindex="0" @click="goToHome" @keydown.enter="goToHome" :aria-label="'Read for You, ' + t('clickToReturnHome')">
+			<h1 class="brand-title">
 				Read for You
 			</h1>
 		</div>
@@ -110,6 +108,14 @@ onMounted(() => {
 	align-items: center;
 	gap: 16px;
 	flex-shrink: 0;
+	cursor: pointer;
+	outline: none;
+}
+
+.brand-section:focus {
+	outline: 2px solid #667eea;
+	outline-offset: 4px;
+	border-radius: 4px;
 }
 
 /* Microsoft Logo */
@@ -124,12 +130,6 @@ onMounted(() => {
 	opacity: 0.8;
 }
 
-.microsoft-logo:focus {
-	outline: 2px solid #667eea;
-	outline-offset: 2px;
-	border-radius: 4px;
-}
-
 /* 品牌标识 */
 .brand-title {
 	font-size: 1.5rem;
@@ -141,7 +141,6 @@ onMounted(() => {
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
-	cursor: pointer;
 	transition: opacity 0.2s ease;
 	white-space: nowrap;
 	flex-shrink: 0;
@@ -149,12 +148,6 @@ onMounted(() => {
 
 .brand-title:hover {
 	opacity: 0.8;
-}
-
-.brand-title:focus {
-	outline: 2px solid #667eea;
-	outline-offset: 4px;
-	border-radius: 4px;
 }
 
 /* 中间区域 */
